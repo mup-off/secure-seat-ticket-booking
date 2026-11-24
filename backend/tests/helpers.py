@@ -59,10 +59,14 @@ def new_organizer():
     return b
 
 
-def new_event(organizer_user, price=5000, capacity=100, description="A great night."):
-    event = Event.objects.create(organizer=organizer_user, title="Kigali Jazz Night", venue="Kigali Arena",
-                                 description=description, starts_at=timezone.now() + timedelta(days=30))
-    tt = TicketType.objects.create(event=event, name="Regular", price=price, capacity=capacity)
+def new_event(organizer_user, price=5000, capacity=100, description="A great night.", status="published", **tier):
+    """A complete, published event with one ticket type (created directly in the database)."""
+    start = timezone.now() + timedelta(days=30)
+    event = Event.objects.create(
+        organizer=organizer_user, title="Kigali Jazz Night", description=description, category="concert",
+        venue="Kigali Arena", venue_address="KG 17 Ave, Kigali", contact_phone="250788000000",
+        starts_at=start, ends_at=start + timedelta(hours=4), status=status, published_at=timezone.now())
+    tt = TicketType.objects.create(event=event, name="Regular", price=price, capacity=capacity, position=1, **tier)
     return event, tt
 
 

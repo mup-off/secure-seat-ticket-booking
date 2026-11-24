@@ -102,7 +102,7 @@ class AccessControlTests(SecurityTestCase):
             self.assertEqual(other.get(path).status_code, 404, path)
         self.assertEqual(other.post(f"/api/organizer/events/{self.event.id}/cancel").status_code, 404)
         self.event.refresh_from_db()
-        self.assertEqual(self.event.status, "active")
+        self.assertEqual(self.event.status, "published")
 
     def test_cannot_register_as_admin(self):
         b = Browser()

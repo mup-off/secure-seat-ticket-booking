@@ -13,6 +13,7 @@ class CheckoutSerializer(StrictSerializer):
     quantity = serializers.IntegerField(min_value=1, max_value=settings.MAX_TICKETS_PER_ORDER)
     phone = serializers.CharField(max_length=20)
     idempotency_key = serializers.UUIDField()
+    access_code = serializers.CharField(max_length=32, required=False, allow_blank=True)  # for hidden tiers
 
     def validate_phone(self, value):
         return normalize_rw_phone(value)
