@@ -1,0 +1,80 @@
+# Runs the security checks from the plan (Phase 4) on every pull request and push.
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: secureseat
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: secureseat
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U secureseat" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_PASSWORD: ci-only-password
+      DB_HOST: localhost
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - name: Django system checks
+        run: python manage.py check
+      - name: Security tests
+        run: python manage.py test
+      - name: Static analysis (Bandit)
+        run: bandit -r . -x ./tests
+      - name: Dependency scan (pip-audit)
+        run: pip-audit -r requirements.txt
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: No raw HTML rendering
+        run: npm run check:xss
+      - run: npm run build
+      - name: Dependency scan (npm audit)
+        run: npm audit --omit=dev --audit-level=moderate
+
+  sast:
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep (OWASP Top 10, Django, React)
+        run: semgrep scan --config p/owasp-top-ten --config p/django --config p/react --error
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks (secret scanning)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

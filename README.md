@@ -2,40 +2,54 @@
 
 An event ticketing web app built by following the Secure SDLC plan in [plan.md](plan.md). Organizers create events and ticket types; buyers pay with mobile money (MTN MoMo / Airtel Money) and get ticket codes that are checked in once at the gate.
 
-## Run it
+**Stack:** React (Vite) · Django 5.2 + Django REST framework · PostgreSQL
 
-Needs Node.js 22.13 or newer (it uses the built-in `node:sqlite`).
+## Set up
 
-```bash
-npm install
-npm run dev        # http://localhost:3000
-npm test           # security test suite
-npm run audit      # dependency scan
+Needs Python 3.12+, Node.js 20+ and PostgreSQL.
+
+**1. Database.** Create a dedicated role; don't use the `postgres` superuser. `CREATEDB` is only needed so Django can create its test database.
+
+```
+psql -U postgres -c "CREATE ROLE secureseat LOGIN CREATEDB PASSWORD 'choose-a-password'" -c "CREATE DATABASE secureseat OWNER secureseat"
 ```
 
-Optionally copy `.env.example` to `.env` first. In development no real payment is made: the order page shows **Approve payment / Decline** buttons that play the part of the buyer's phone.
+**2. Backend**
 
-To try the whole flow:
+```
+cd backend
+python -m venv .venv
+.venv\Scripts\activate            # Windows (macOS/Linux: source .venv/bin/activate)
+pip install -r requirements-dev.txt
+copy .env.example .env            # then set DB_PASSWORD
+python manage.py migrate
+python manage.py runserver        # http://127.0.0.1:8000
+```
 
-1. Sign up as an organizer, add the setup key to an authenticator app, and enter the code.
-2. Create an event and a ticket type.
-3. In another browser (or a private window), sign up as a buyer and buy tickets.
-4. Approve the payment and copy a ticket code.
-5. As the organizer, open **Check-in** and enter the code. A second check-in of the same code is rejected.
+**3. Frontend** (in another terminal)
 
-## Layout
+```
+cd frontend
+npm install
+npm run dev                       # http://localhost:5173 (forwards /api to Django)
+```
 
-| Path | What it holds |
+In development no real payment is made: the order page shows **Approve payment / Decline** buttons that play the part of the buyer's phone.
+
+## Checks
+
+| Command (folder) | What it does |
 | --- | --- |
-| `src/app.js` | Express setup: security headers, session cookie, CSRF, error handler |
-| `src/security/` | CSRF, passwords, TOTP 2FA, access control, rate limits, input validation, session store |
-| `src/services/orders.js` | Checkout, payment confirmation, hold expiry, check-in |
-| `src/services/paymentProvider.js` | Payment provider adapter (mock only so far) |
-| `src/services/audit.js` | Append-only, hash-chained audit log |
-| `src/routes/` | Auth, shop, organizer, webhooks, dev-only payments |
-| `test/security.test.js` | Tests for each abuse case in the plan |
-| `.github/workflows/security.yml` | CI: tests, npm audit, Semgrep, gitleaks |
+| `python manage.py test` (backend) | Security test suite |
+| `bandit -r . -x ./.venv,./tests` (backend) | Static analysis |
+| `pip-audit -r requirements.txt` (backend) | Python dependency scan |
+| `npm run check:xss` (frontend) | Fails if code renders raw HTML |
+| `npm audit` (frontend) | JavaScript dependency scan |
+| `python manage.py verify_audit_log` (backend) | Checks the audit log's hash chain |
+| `python manage.py expire_holds` (backend) | Releases expired checkout holds; schedule every minute |
+
+CI runs all of these plus Semgrep and gitleaks: `.github/workflows/security.yml`.
 
 ## Production
 
-`NODE_ENV=production` refuses to start without a `SESSION_SECRET` of at least 32 characters, and refuses the mock payment provider. Run it behind HTTPS (set `TRUST_PROXY=1` behind a proxy). See `SecureSeat-Security-Implementation.docx` for what is done and what is still open.
+`DJANGO_ENV=production` refuses to start without a strong `SECRET_KEY` and refuses the mock payment provider. Build the frontend (`npm run build`); Django then serves it from `frontend/dist`, so the pages and the API share one origin and the same security headers. Run behind HTTPS. See `SecureSeat-Security-Implementation.docx` for what is done and what is still open.
