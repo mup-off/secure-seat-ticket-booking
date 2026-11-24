@@ -309,13 +309,12 @@ class CancelAndRefundTests(EventTestCase):
         self.assertEqual(r.status_code, 409)
 
 
-@override_settings(MEDIA_ROOT=None)
 class CoverImageTests(EventTestCase):
     def setUp(self):
         super().setUp()
         import tempfile
 
-        self._media = tempfile.TemporaryDirectory()
+        self._media = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.settings_override = override_settings(MEDIA_ROOT=self._media.name)
         self.settings_override.enable()
         self.eid = self.draft()
@@ -348,5 +347,8 @@ class CoverImageTests(EventTestCase):
 
     def test_draft_cover_is_private(self):
         self.upload(png_bytes())
-        self.assertEqual(self.org.get(f"/api/events/{self.eid}/cover").status_code, 200)
+        own = self.org.get(f"/api/events/{self.eid}/cover")
+        self.assertEqual(own.status_code, 200)
+        self.assertEqual(own["Content-Type"], "image/jpeg")
+        own.file_to_stream.close()  # release the file handle (Windows)
         self.assertEqual(Browser().get(f"/api/events/{self.eid}/cover").status_code, 404)
