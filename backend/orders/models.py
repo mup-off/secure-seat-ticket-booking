@@ -11,6 +11,8 @@ class Order(models.Model):
         PAID = "paid"
         EXPIRED = "expired"
         FAILED = "failed"
+        REFUND_PENDING = "refund_pending"  # event cancelled; refund asked of the provider
+        REFUNDED = "refunded"
 
     buyer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="orders")
     ticket_type = models.ForeignKey("events.TicketType", on_delete=models.PROTECT, related_name="orders")
@@ -24,6 +26,7 @@ class Order(models.Model):
     idempotency_key = models.UUIDField()
     expires_at = models.DateTimeField()
     paid_at = models.DateTimeField(null=True, blank=True)
+    refunded_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

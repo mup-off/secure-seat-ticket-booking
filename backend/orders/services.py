@@ -49,8 +49,19 @@ def expire_holds():
     return len(ids)
 
 
-def create_order(*, buyer, ticket_type_id, quantity, phone, idempotency_key):
+SALE_STATE_MESSAGES = {
+    "stopped": "Sales for this ticket type have been stopped.",
+    "not_started": "Sales for this ticket type haven't started yet.",
+    "ended": "Sales for this ticket type have ended.",
+    "sold_out": "Sorry, this ticket type is sold out.",
+}
+
+
+def create_order(*, buyer, ticket_type_id, quantity, phone, idempotency_key, access_code=""):
+    from events.services import end_past_events, hidden_tiers_for_code
+
     expire_holds()
+    end_past_events()
     try:
         with transaction.atomic():
             existing = Order.objects.filter(buyer=buyer, idempotency_key=idempotency_key).first()
@@ -59,12 +70,23 @@ def create_order(*, buyer, ticket_type_id, quantity, phone, idempotency_key):
 
             # Lock this ticket type's row until the transaction ends. A second buyer
             # waits here, then sees the updated "sold" count.
-            tt = (TicketType.objects.select_for_update().select_related("event")
+            tt = (TicketType.objects.select_for_update(of=("self",)).select_related("event")
                   .filter(pk=ticket_type_id).first())
-            if not tt:
+            # Drafts and hidden tiers without the right code look exactly like a
+            # ticket type that doesn't exist, so they can't be discovered by guessing IDs.
+            if not tt or tt.event.status in (Event.Status.DRAFT,):
                 raise CheckoutError("That ticket type does not exist.", 404)
-            if tt.event.status != Event.Status.ACTIVE or tt.event.starts_at <= timezone.now():
+            if tt.visibility == TicketType.Visibility.HIDDEN and tt not in hidden_tiers_for_code(tt.event, access_code):
+                raise CheckoutError("That ticket type does not exist.", 404)
+            if tt.event.status == Event.Status.PAUSED:
+                raise CheckoutError("Ticket sales for this event are paused.")
+            if tt.event.status != Event.Status.PUBLISHED or tt.event.has_ended():
                 raise CheckoutError("Tickets for this event are no longer on sale.")
+            state = tt.sale_state()
+            if state in SALE_STATE_MESSAGES and state != "sold_out":
+                raise CheckoutError(SALE_STATE_MESSAGES[state])
+            if quantity > tt.max_per_order:
+                raise CheckoutError(f"You can buy at most {tt.max_per_order} of this ticket type per order.", 400)
 
             reserved = TicketType.objects.filter(
                 pk=tt.pk, sold__lte=F("capacity") - quantity
@@ -147,6 +169,41 @@ def confirm_payment(payment_ref, source):
         alert("Payment received for an expired order: refund needed", order=order.id)
         record(None, "payment.after_expiry_refund_needed", f"order:{order.id}", amount=order.total, source=source)
     return outcome
+
+
+def start_refunds_for_event(event):
+    """Called when an event is cancelled: releases unpaid holds and refunds every
+    paid order. Orders whose refund the provider doesn't accept stay in
+    "refund_pending" and are retried by the housekeeping command."""
+    with transaction.atomic():
+        pending_ids = list(Order.objects.filter(ticket_type__event=event, status=Order.Status.PENDING)
+                           .values_list("id", flat=True))
+        refund_ids = list(Order.objects.filter(ticket_type__event=event, status=Order.Status.PAID)
+                          .values_list("id", flat=True))
+        Order.objects.filter(id__in=refund_ids).update(status=Order.Status.REFUND_PENDING)
+    for order_id in pending_ids:
+        _fail(order_id)
+    refunded = retry_refunds(Order.objects.filter(id__in=refund_ids))
+    return {"refunds_started": len(refund_ids), "refunded": refunded, "holds_released": len(pending_ids)}
+
+
+def retry_refunds(queryset=None):
+    """Asks the provider to refund each order in refund_pending. Returns how many succeeded."""
+    qs = queryset if queryset is not None else Order.objects.all()
+    done = 0
+    for order in qs.filter(status=Order.Status.REFUND_PENDING):
+        try:
+            ok = get_provider().refund(order.payment_ref, order.total)
+        except Exception:
+            logger.exception("refund failed", extra={"data": {"order": order.id}})
+            ok = False
+        if ok and Order.objects.filter(pk=order.pk, status=Order.Status.REFUND_PENDING).update(
+                status=Order.Status.REFUNDED, refunded_at=timezone.now()):
+            record(None, "order.refunded", f"order:{order.id}", amount=order.total)
+            done += 1
+        elif not ok:
+            alert("Refund not accepted by the payment provider", order=order.id, amount=order.total)
+    return done
 
 
 def check_in(token, organizer):

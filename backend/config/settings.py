@@ -186,6 +186,8 @@ REST_FRAMEWORK = {
         "register": "10/hour",
         "checkout": "10/min",  # per user
         "webhook": "120/min",
+        "unlock": "10/min",  # hidden-tier access code guesses, per IP
+        "upload": "20/hour",  # cover image uploads, per user
     },
     "UNAUTHENTICATED_USER": "django.contrib.auth.models.AnonymousUser",
 }
@@ -206,6 +208,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 FRONTEND_DIST = REPO_DIR / "frontend" / "dist"
 WHITENOISE_ROOT = FRONTEND_DIST if FRONTEND_DIST.exists() else None
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Uploaded cover images. Stored outside any folder the web server serves directly;
+# they are sent through events.views.EventCoverView, which checks who may see them.
+MEDIA_ROOT = Path(env("MEDIA_ROOT", str(BASE_DIR / "media")))
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+FILE_UPLOAD_PERMISSIONS = 0o640
 
 # ---- Logging (plan, Phase 6) ----
 # JSON lines; phone numbers masked and secrets redacted by core.logging.ScrubFilter.

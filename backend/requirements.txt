@@ -4,3 +4,4 @@ psycopg[binary]>=3.2      # PostgreSQL driver
 argon2-cffi>=23.1         # Argon2 password hashing (plan, Phase 3)
 pyotp>=2.9                # TOTP two-step verification for organizers
 whitenoise>=6.7           # serves the built React app in production
+Pillow>=11                # validates and re-encodes uploaded cover images

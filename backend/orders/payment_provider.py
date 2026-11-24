@@ -1,9 +1,10 @@
 """Payment provider adapter.
 
-The app needs only two calls from a mobile money provider (MTN MoMo or Airtel Money):
+The app needs three calls from a mobile money provider (MTN MoMo or Airtel Money):
 
     request_to_pay(ref, amount, currency, phone)  asks the buyer to approve on their phone
     get_status(ref) -> {"status": "PENDING" | "SUCCESSFUL" | "FAILED", "amount", "currency"}
+    refund(ref, amount) -> True if the provider accepted the refund
 
 The buyer types their mobile money PIN on their own phone, in the provider's prompt.
 It never reaches this app (plan, Phase 1).
@@ -28,6 +29,11 @@ class MockProvider:
         if not tx:
             return {"status": "NOT_FOUND"}
         return {"status": tx.status, "amount": tx.amount, "currency": tx.currency}
+
+    def refund(self, ref, amount):
+        """Sends the money back. Returns True when the provider accepted the refund."""
+        return MockProviderTransaction.objects.filter(ref=ref, status="SUCCESSFUL", amount=amount).update(
+            status="REFUNDED") == 1
 
     def simulate_buyer_response(self, ref, approve):
         """Development only: plays the buyer approving or declining on their phone."""
