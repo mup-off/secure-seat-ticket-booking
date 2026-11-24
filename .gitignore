@@ -1,0 +1,14 @@
+# Secrets: never commit (plan, Phase 3)
+.env
+.env.*
+!.env.example
+
+# Local database (contains personal data)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+node_modules/
+npm-debug.log*
+*.log
