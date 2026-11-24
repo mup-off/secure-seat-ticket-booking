@@ -1,0 +1,3 @@
+-r requirements.txt
+pip-audit>=2.7            # dependency scanning (plan, Phase 4)
+bandit>=1.7               # static analysis for Python (plan, Phase 4)
