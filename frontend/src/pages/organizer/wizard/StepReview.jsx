@@ -4,9 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../../api.js';
 import { ErrorMessage } from '../../../components.jsx';
 import EventView from '../../../EventView.jsx';
+import { useToast } from '../../../toast.jsx';
+import { Skeleton } from '../../../ui.jsx';
 
 export default function StepReview({ event, onSaved, goTo }) {
   const navigate = useNavigate();
+  const toast = useToast();
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -20,6 +23,7 @@ export default function StepReview({ event, onSaved, goTo }) {
     setError(null);
     try {
       onSaved(await api.post(`/organizer/events/${event.id}/publish`));
+      toast('Your event is live! Tickets are on sale.');
       navigate(`/organizer/events/${event.id}`);
     } catch (err) {
       setError(err);
@@ -55,7 +59,7 @@ export default function StepReview({ event, onSaved, goTo }) {
         )}
         <ErrorMessage error={error} />
         {isDraft && (
-          <button type="button" onClick={publish} disabled={busy || problems.length > 0}>{busy ? 'Publishing…' : 'Publish event'}</button>
+          <button type="button" className="big" onClick={publish} disabled={busy || problems.length > 0}>{busy ? 'Publishing…' : 'Publish event'}</button>
         )}
       </section>
 
@@ -66,7 +70,7 @@ export default function StepReview({ event, onSaved, goTo }) {
             <p className="hint">Buyers will see the ticket form here.</p>
           </EventView>
         ) : (
-          <p className="empty">Loading preview…</p>
+          <Skeleton height={320} />
         )}
       </div>
     </>

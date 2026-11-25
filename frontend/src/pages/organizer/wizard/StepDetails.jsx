@@ -33,6 +33,7 @@ const StepDetails = forwardRef(function StepDetails({ event, onSaved }, ref) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [coverError, setCoverError] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const pending = useRef({});
   const timer = useRef(null);
   const editable = !['cancelled', 'ended'].includes(event.status);
@@ -84,8 +85,19 @@ const StepDetails = forwardRef(function StepDetails({ event, onSaved }, ref) {
   async function uploadCover(e) {
     const file = e.target.files[0];
     e.target.value = '';
+    await uploadFile(file);
+  }
+
+  function dropCover(e) {
+    e.preventDefault();
+    setDragging(false);
+    if (editable) uploadFile(e.dataTransfer.files[0]);
+  }
+
+  async function uploadFile(file) {
     if (!file) return;
     setCoverError(null);
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return setCoverError(new Error('Use a JPEG, PNG or WebP picture.'));
     if (file.size > 5 * 1024 * 1024) return setCoverError(new Error('The image must be 5 MB or smaller.'));
     setUploading(true);
     try {
@@ -124,14 +136,15 @@ const StepDetails = forwardRef(function StepDetails({ event, onSaved }, ref) {
         <div className="cover-field">
           <span className="label">Cover image (poster or flyer)</span>
           {event.cover_url && <img className="cover-thumb" src={event.cover_url} alt="Current cover" />}
-          <div className="row-left">
-            <label className="button secondary file-button">
-              {uploading ? 'Uploading…' : event.cover_url ? 'Replace image' : 'Upload image'}
-              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover} hidden />
-            </label>
-            {event.cover_url && <button type="button" className="link" onClick={removeCover}>Remove</button>}
-          </div>
-          <span className="hint">JPEG, PNG or WebP, up to 5 MB.</span>
+          <label className={`dropzone ${dragging ? 'over' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={dropCover}>
+            <strong>{uploading ? 'Uploading…' : event.cover_url ? 'Drop a new image to replace it' : 'Drop your poster here'}</strong>
+            <span>or click to choose a file · JPEG, PNG or WebP, up to 5 MB</span>
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover} hidden />
+          </label>
+          {event.cover_url && <button type="button" className="link" onClick={removeCover}>Remove cover</button>}
           <ErrorMessage error={coverError} />
         </div>
 

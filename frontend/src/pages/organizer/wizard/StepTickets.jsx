@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { api } from '../../../api.js';
 import { ErrorMessage } from '../../../components.jsx';
 import { fromKigaliInput, rwf, toKigaliInput } from '../../../format.js';
+import { useToast } from '../../../toast.jsx';
+import { Bar } from '../../../ui.jsx';
 
 const EMPTY = {
   name: '', description: '', price: '', capacity: '', max_per_order: 10,
@@ -28,7 +30,8 @@ function toApi(f) {
   return body;
 }
 
-function TierCard({ event, tier, editable, onSaved, onCancelNew, dragProps, onMove, index, count }) {
+function TierCard({ event, tier, editable, onSaved, onCancelNew, dragProps, onMove, index, count, dragOver }) {
+  const toast = useToast();
   const [form, setForm] = useState(tier ? toForm(tier) : EMPTY);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -46,6 +49,7 @@ function TierCard({ event, tier, editable, onSaved, onCancelNew, dragProps, onMo
       const base = `/organizer/events/${event.id}/ticket-types`;
       const updated = tier ? await api.patch(`${base}/${tier.id}`, toApi(form)) : await api.post(base, toApi(form));
       setDirty(false);
+      toast(tier ? `Saved "${form.name}"` : `Added "${form.name}"`);
       onSaved(updated);
     } catch (err) {
       setError(err);
@@ -58,13 +62,14 @@ function TierCard({ event, tier, editable, onSaved, onCancelNew, dragProps, onMo
     if (!window.confirm(`Delete the "${tier.name}" ticket type?`)) return;
     try {
       onSaved(await api.del(`/organizer/events/${event.id}/ticket-types/${tier.id}`));
+      toast(`Deleted "${tier.name}"`, 'info');
     } catch (err) {
       setError(err);
     }
   }
 
   return (
-    <form className={`card tier-card ${tier ? '' : 'new'}`} onSubmit={save} {...(tier && editable ? dragProps.drop : {})}>
+    <form className={`card tier-card ${tier ? '' : 'new'} ${dragOver ? 'drag-over' : ''}`} onSubmit={save} {...(tier && editable ? dragProps.drop : {})}>
       <div className="row">
         <div className="row-left">
           {tier && editable && (
@@ -79,6 +84,7 @@ function TierCard({ event, tier, editable, onSaved, onCancelNew, dragProps, onMo
         </div>
         {tier && !tier.on_sale && <span className="status paused">Sales stopped</span>}
       </div>
+      {tier && <Bar value={tier.sold} max={tier.capacity} low={-1} />}
       <ErrorMessage error={error} />
       <fieldset disabled={!editable} className="plain-fieldset">
         <div className="grid-3">
@@ -126,6 +132,7 @@ function TierCard({ event, tier, editable, onSaved, onCancelNew, dragProps, onMo
 export default function StepTickets({ event, onSaved }) {
   const [adding, setAdding] = useState(event.ticket_types.length === 0);
   const [dragFrom, setDragFrom] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
   const [error, setError] = useState(null);
   const editable = !['cancelled', 'ended'].includes(event.status);
   const tiers = event.ticket_types;
@@ -152,15 +159,17 @@ export default function StepTickets({ event, onSaved }) {
       handle: {
         draggable: true,
         onDragStart: (e) => { setDragFrom(index); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); },
-        onDragEnd: () => setDragFrom(null),
+        onDragEnd: () => { setDragFrom(null); setOverIndex(null); },
       },
       drop: {
-        onDragOver: (e) => { if (dragFrom !== null) e.preventDefault(); },
+        onDragOver: (e) => { if (dragFrom !== null) { e.preventDefault(); setOverIndex(index); } },
+        onDragLeave: () => setOverIndex(null),
         onDrop: (e) => {
           e.preventDefault();
           if (dragFrom === null || dragFrom === index) return;
           move(dragFrom, index - dragFrom);
           setDragFrom(null);
+          setOverIndex(null);
         },
       },
     };
@@ -175,7 +184,7 @@ export default function StepTickets({ event, onSaved }) {
       </div>
       {tiers.map((t, i) => (
         <TierCard key={`${t.id}-${t.position}-${t.sold}`} event={event} tier={t} editable={editable} onSaved={onSaved}
-          dragProps={dragProps(i)} onMove={move} index={i} count={tiers.length} />
+          dragProps={dragProps(i)} onMove={move} index={i} count={tiers.length} dragOver={overIndex === i && dragFrom !== i} />
       ))}
       {adding && editable && (
         <TierCard event={event} editable onSaved={(e) => { onSaved(e); setAdding(false); }} onCancelNew={() => setAdding(false)} />

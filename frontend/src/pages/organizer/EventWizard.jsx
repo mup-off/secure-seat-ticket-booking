@@ -36,6 +36,7 @@ export default function EventWizard() {
 
   return (
     <>
+      <span className="eyebrow">{isDraft ? 'New event · draft' : 'Editing'}</span>
       <div className="row">
         <h1>{event.title || 'New event'}</h1>
         <Status value={event.status} />
@@ -48,14 +49,18 @@ export default function EventWizard() {
       <ol className="stepper">
         {STEPS.map((label, i) => (
           <li key={label} className={step === i + 1 ? 'active' : step > i + 1 ? 'done' : ''}>
-            <button type="button" className="link" onClick={() => goTo(i + 1)}>{i + 1}. {label}</button>
+            <button type="button" className="link" onClick={() => goTo(i + 1)} aria-current={step === i + 1 ? 'step' : undefined}>
+              <span className="num">{step > i + 1 ? '✓' : i + 1}</span>{label}
+            </button>
           </li>
         ))}
       </ol>
 
-      {step === 1 && <StepDetails ref={detailsRef} event={event} onSaved={setEvent} />}
-      {step === 2 && <StepTickets event={event} onSaved={setEvent} />}
-      {step === 3 && <StepReview event={event} onSaved={setEvent} goTo={goTo} />}
+      <div className="step-panel" key={step}>
+        {step === 1 && <StepDetails ref={detailsRef} event={event} onSaved={setEvent} />}
+        {step === 2 && <StepTickets event={event} onSaved={setEvent} />}
+        {step === 3 && <StepReview event={event} onSaved={setEvent} goTo={goTo} />}
+      </div>
 
       <div className="row wizard-nav">
         {step > 1 ? <button type="button" className="secondary" onClick={() => goTo(step - 1)}>← Back</button> : <span />}
