@@ -4,13 +4,17 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useApi } from '../useApi.js';
 import { ErrorMessage } from '../components.jsx';
-import { rwf, when } from '../format.js';
+import EventView from '../EventView.jsx';
+import { rwf } from '../format.js';
 
 export default function EventPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data: event, error: loadError } = useApi(`/events/${id}`);
+  const [unlocked, setUnlocked] = useState([]);
+  const [code, setCode] = useState('');
+  const [codeMessage, setCodeMessage] = useState(null);
   const [ticketTypeId, setTicketTypeId] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [phone, setPhone] = useState('');
@@ -22,8 +26,22 @@ export default function EventPage() {
   if (loadError) return <ErrorMessage error={loadError} />;
   if (!event) return <p className="empty">Loading…</p>;
 
-  const available = event.ticket_types.filter((t) => t.remaining > 0);
-  const selected = ticketTypeId ?? available[0]?.id;
+  const shown = { ...event, ticket_types: [...event.ticket_types, ...unlocked] };
+  const buyable = shown.ticket_types.filter((t) => t.sale_state === 'on_sale');
+  const selected = buyable.find((t) => t.id === ticketTypeId) || buyable[0];
+  const canBuy = event.status === 'published' && buyable.length > 0;
+
+  async function unlock(e) {
+    e.preventDefault();
+    setCodeMessage(null);
+    try {
+      const res = await api.post(`/events/${id}/unlock`, { code });
+      setUnlocked(res.ticket_types.filter((t) => !shown.ticket_types.some((s) => s.id === t.id)));
+      setCodeMessage({ ok: true, text: 'Code accepted.' });
+    } catch (err) {
+      setCodeMessage({ ok: false, text: err.message });
+    }
+  }
 
   async function buy(e) {
     e.preventDefault();
@@ -33,10 +51,11 @@ export default function EventPage() {
       // Only the ticket type and quantity are sent, never a price: the server reads
       // the price from the database and rejects any request that includes one.
       const order = await api.post('/checkout', {
-        ticket_type_id: selected,
+        ticket_type_id: selected.id,
         quantity: Number(quantity),
         phone,
         idempotency_key: idempotencyKey,
+        ...(selected.hidden ? { access_code: code } : {}),
       });
       navigate(`/orders/${order.id}`);
     } catch (err) {
@@ -47,53 +66,42 @@ export default function EventPage() {
   }
 
   return (
-    <>
-      <article className="card">
-        <h1>{event.title}</h1>
-        <p>{when(event.starts_at)} · {event.venue}</p>
-        <p className="description">{event.description}</p>
-      </article>
+    <EventView event={shown}>
+      {event.status === 'published' && (
+        <form onSubmit={unlock} className="inline-form">
+          <label>Have an access code?
+            <input value={code} maxLength={32} onChange={(e) => setCode(e.target.value)} placeholder="e.g. SPONSOR-2026" />
+          </label>
+          <button type="submit" className="secondary" disabled={!code}>Unlock</button>
+          {codeMessage && <p className={codeMessage.ok ? 'ok' : 'error'}>{codeMessage.text}</p>}
+        </form>
+      )}
 
-      <section className="card">
-        <h2>Tickets</h2>
-        {!event.ticket_types.length && <p className="empty">Tickets are not on sale yet.</p>}
-        {!!event.ticket_types.length && !user && (
-          <>
-            <ul className="plain">
-              {event.ticket_types.map((t) => <li key={t.id}>{t.name}: {rwf(t.price)}</li>)}
-            </ul>
-            <p><Link to="/login">Log in</Link> or <Link to="/register">sign up</Link> to buy tickets.</p>
-          </>
-        )}
-        {!!event.ticket_types.length && user && user.role !== 'buyer' && (
-          <p className="hint">Log in with a buyer account to buy tickets.</p>
-        )}
-        {!!event.ticket_types.length && user?.role === 'buyer' && (
-          <form onSubmit={buy}>
-            <ErrorMessage error={error} />
-            <fieldset>
-              <legend>Ticket type</legend>
-              {event.ticket_types.map((t) => (
-                <label key={t.id} className="radio">
-                  <input type="radio" name="tt" value={t.id} disabled={t.remaining <= 0}
-                    checked={selected === t.id} onChange={() => setTicketTypeId(t.id)} />
-                  {t.name}: {rwf(t.price)}
-                  <span className="hint">{t.remaining > 0 ? `${t.remaining} left` : 'Sold out'}</span>
-                </label>
-              ))}
-            </fieldset>
-            <label>Quantity
-              <input type="number" min="1" max="10" value={quantity} required onChange={(e) => setQuantity(e.target.value)} />
-            </label>
-            <label>MTN or Airtel number to pay from
-              <input type="tel" placeholder="0788123456" maxLength={20} value={phone} required autoComplete="tel"
-                onChange={(e) => setPhone(e.target.value)} />
-            </label>
-            <p className="hint">You will get a prompt on your phone to approve the payment with your PIN. We never ask for your PIN.</p>
-            <button type="submit" disabled={busy || !selected}>Reserve and pay</button>
-          </form>
-        )}
-      </section>
-    </>
+      {canBuy && !user && <p><Link to="/login">Log in</Link> or <Link to="/register">sign up</Link> to buy tickets.</p>}
+      {canBuy && user && user.role !== 'buyer' && <p className="hint">Log in with a buyer account to buy tickets.</p>}
+      {canBuy && user?.role === 'buyer' && (
+        <form onSubmit={buy} className="buy-form">
+          <h3>Buy tickets</h3>
+          <ErrorMessage error={error} />
+          <fieldset>
+            <legend>Ticket type</legend>
+            {buyable.map((t) => (
+              <label key={t.id} className="radio">
+                <input type="radio" name="tt" checked={selected?.id === t.id} onChange={() => setTicketTypeId(t.id)} />
+                {t.name}: {rwf(t.price)}
+              </label>
+            ))}
+          </fieldset>
+          <label>Quantity (max {selected?.max_per_order})
+            <input type="number" min="1" max={selected?.max_per_order} value={quantity} required onChange={(e) => setQuantity(e.target.value)} />
+          </label>
+          <label>MTN or Airtel number to pay from
+            <input type="tel" placeholder="0788123456" maxLength={20} value={phone} required autoComplete="tel" onChange={(e) => setPhone(e.target.value)} />
+          </label>
+          <p className="hint">You will get a prompt on your phone to approve the payment with your PIN. We never ask for your PIN.</p>
+          <button type="submit" disabled={busy || !selected}>Reserve and pay</button>
+        </form>
+      )}
+    </EventView>
   );
 }

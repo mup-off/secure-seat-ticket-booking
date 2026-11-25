@@ -319,7 +319,7 @@ class AttendeeListView(APIView):
         return Response({
             "event": {"id": event.id, "title": event.title},
             "attendees": [
-                {"email": o.buyer.email, "ticket_type": o.ticket_type.name, "quantity": o.quantity,
+                {"username": o.buyer.username, "email": o.buyer.email, "ticket_type": o.ticket_type.name, "quantity": o.quantity,
                  "unit_price": o.unit_price, "status": o.status, "checked_in": o.checked_in, "paid_at": o.paid_at}
                 for o in orders
             ],

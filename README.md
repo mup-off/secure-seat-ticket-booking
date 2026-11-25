@@ -46,7 +46,7 @@ In development no real payment is made: the order page shows **Approve payment /
 | `npm run check:xss` (frontend) | Fails if code renders raw HTML |
 | `npm audit` (frontend) | JavaScript dependency scan |
 | `python manage.py verify_audit_log` (backend) | Checks the audit log's hash chain |
-| `python manage.py expire_holds` (backend) | Releases expired checkout holds; schedule every minute |
+| `python manage.py housekeeping` (backend) | Releases expired holds, marks finished events as ended, retries refunds; schedule every minute |
 
 CI runs all of these plus Semgrep and gitleaks: `.github/workflows/security.yml`.
 

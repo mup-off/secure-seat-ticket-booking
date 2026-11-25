@@ -14,8 +14,17 @@ PASSWORD = "correct horse battery"
 _counter = itertools.count(1)
 
 
+def unique_name(prefix="user"):
+    return f"{prefix}{next(_counter)}-{uuid.uuid4().hex[:6]}"
+
+
 def unique_email(prefix="user"):
-    return f"{prefix}{next(_counter)}-{uuid.uuid4().hex[:6]}@example.com"
+    return f"{unique_name(prefix)}@example.com"
+
+
+def register_body(prefix, role, password=PASSWORD):
+    name = unique_name(prefix)
+    return {"username": name, "email": f"{name}@example.com", "password": password, "role": role}
 
 
 class Browser:
@@ -40,22 +49,24 @@ class Browser:
 
 def new_buyer():
     b = Browser()
-    b.email = unique_email("buyer")
-    r = b.post("/api/auth/register", {"email": b.email, "password": PASSWORD, "role": "buyer"})
+    body = register_body("buyer", "buyer")
+    b.username, b.email = body["username"], body["email"]
+    r = b.post("/api/auth/register", body)
     assert r.status_code == 201, r.content
-    b.user = User.objects.get(email=b.email)
+    b.user = User.objects.get(username=b.username)
     return b
 
 
 def new_organizer():
     b = Browser()
-    b.email = unique_email("org")
-    r = b.post("/api/auth/register", {"email": b.email, "password": PASSWORD, "role": "organizer"})
+    body = register_body("org", "organizer")
+    b.username, b.email = body["username"], body["email"]
+    r = b.post("/api/auth/register", body)
     assert r.status_code == 201, r.content
     b.secret = b.get("/api/auth/2fa/setup").json()["secret"]
     r = b.post("/api/auth/2fa/setup", {"code": totp.code_for_counter(b.secret, totp.current_counter())})
     assert r.status_code == 200, r.content
-    b.user = User.objects.get(email=b.email)
+    b.user = User.objects.get(username=b.username)
     return b
 
 

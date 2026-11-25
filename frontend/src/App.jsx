@@ -8,7 +8,7 @@ import TwoFactorSetup from './pages/TwoFactorSetup.jsx';
 import Orders from './pages/Orders.jsx';
 import OrderPage from './pages/OrderPage.jsx';
 import Dashboard from './pages/organizer/Dashboard.jsx';
-import NewEvent from './pages/organizer/NewEvent.jsx';
+import EventWizard from './pages/organizer/EventWizard.jsx';
 import ManageEvent from './pages/organizer/ManageEvent.jsx';
 import Attendees from './pages/organizer/Attendees.jsx';
 import CheckIn from './pages/organizer/CheckIn.jsx';
@@ -68,7 +68,7 @@ export default function App() {
           <Route path="/orders" element={<RequireUser><Orders /></RequireUser>} />
           <Route path="/orders/:id" element={<RequireUser><OrderPage /></RequireUser>} />
           <Route path="/organizer" element={<RequireUser role="organizer"><Dashboard /></RequireUser>} />
-          <Route path="/organizer/events/new" element={<RequireUser role="organizer"><NewEvent /></RequireUser>} />
+          <Route path="/organizer/events/:id/edit" element={<RequireUser role="organizer"><EventWizard /></RequireUser>} />
           <Route path="/organizer/events/:id" element={<RequireUser role="organizer"><ManageEvent /></RequireUser>} />
           <Route path="/organizer/events/:id/attendees" element={<RequireUser role="organizer"><Attendees /></RequireUser>} />
           <Route path="/organizer/checkin" element={<RequireUser role="organizer"><CheckIn /></RequireUser>} />

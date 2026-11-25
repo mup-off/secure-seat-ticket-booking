@@ -1,7 +1,7 @@
 import { Link, useParams } from 'react-router-dom';
 import { useApi } from '../../useApi.js';
-import { ErrorMessage } from '../../components.jsx';
-import { when } from '../../format.js';
+import { ErrorMessage, Status } from '../../components.jsx';
+import { rwf, when } from '../../format.js';
 
 export default function Attendees() {
   const { id } = useParams();
@@ -16,10 +16,10 @@ export default function Attendees() {
         <p className="empty">No paid orders yet.</p>
       ) : (
         <table>
-          <thead><tr><th>Buyer</th><th>Ticket type</th><th>Tickets</th><th>Checked in</th><th>Paid</th></tr></thead>
+          <thead><tr><th>Buyer</th><th>Ticket type</th><th>Tickets</th><th>Price paid</th><th>Status</th><th>Checked in</th><th>Paid</th></tr></thead>
           <tbody>
             {data.attendees.map((a, i) => (
-              <tr key={i}><td>{a.email}</td><td>{a.ticket_type}</td><td>{a.quantity}</td><td>{a.checked_in}</td><td>{when(a.paid_at)}</td></tr>
+              <tr key={i}><td>{a.email}</td><td>{a.ticket_type}</td><td>{a.quantity}</td><td>{rwf(a.unit_price)}</td><td><Status value={a.status} /></td><td>{a.checked_in}</td><td>{when(a.paid_at)}</td></tr>
             ))}
           </tbody>
         </table>

@@ -46,7 +46,9 @@ export default function OrderPage() {
           </>
         )}
         {order.status === 'expired' && <p>The hold ran out before the payment was confirmed, so the tickets were released.</p>}
-        {order.status === 'failed' && <p>The payment was declined or failed. No money was taken.</p>}
+        {order.status === 'failed' && <p>The payment was declined or failed, or the event was cancelled before you paid. No money was taken.</p>}
+        {order.status === 'refund_pending' && <p>This event was cancelled. Your refund of {rwf(order.total)} is being sent back to your mobile money account.</p>}
+        {order.status === 'refunded' && <p>This event was cancelled and {rwf(order.total)} has been refunded to your mobile money account.</p>}
       </section>
 
       {!!order.tickets?.length && (

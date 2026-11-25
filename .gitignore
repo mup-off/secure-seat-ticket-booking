@@ -22,3 +22,6 @@ backend/staticfiles/
 
 # Frontend build output
 frontend/dist/
+
+# Uploaded cover images (user content)
+backend/media/

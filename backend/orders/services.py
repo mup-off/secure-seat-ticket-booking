@@ -109,6 +109,15 @@ def create_order(*, buyer, ticket_type_id, quantity, phone, idempotency_key, acc
         raise
 
     record(buyer, "order.created", f"order:{order.id}", total=order.total, quantity=order.quantity)
+    if order.total == 0:
+        # Free tickets: nothing to pay, so no payment prompt. Issue the tickets now.
+        with transaction.atomic():
+            if Order.objects.filter(pk=order.pk, status=Order.Status.PENDING).update(
+                    status=Order.Status.PAID, paid_at=timezone.now()):
+                Ticket.objects.bulk_create([Ticket(order_id=order.pk) for _ in range(order.quantity)])
+        record(buyer, "order.free_confirmed", f"order:{order.id}")
+        order.refresh_from_db()
+        return order
     try:
         get_provider().request_to_pay(order.payment_ref, order.total, order.currency, order.payer_phone)
     except Exception:

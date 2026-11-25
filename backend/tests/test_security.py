@@ -23,7 +23,7 @@ from orders import services
 from orders.models import MockProviderTransaction, Order, Ticket
 from orders.payment_provider import get_provider
 
-from .helpers import PASSWORD, Browser, checkout, new_buyer, new_event, new_organizer, unique_email
+from .helpers import PASSWORD, Browser, checkout, new_buyer, new_event, new_organizer, register_body, unique_email, unique_name
 
 
 class SecurityTestCase(TestCase):
@@ -106,7 +106,7 @@ class AccessControlTests(SecurityTestCase):
 
     def test_cannot_register_as_admin(self):
         b = Browser()
-        r = b.post("/api/auth/register", {"email": unique_email(), "password": PASSWORD, "role": "admin"})
+        r = b.post("/api/auth/register", {**register_body("adm", "buyer"), "role": "admin"})
         self.assertEqual(r.status_code, 400)
 
     def test_signed_out_user_cannot_checkout(self):
@@ -207,12 +207,12 @@ class LoginTests(SecurityTestCase):
         buyer = new_buyer()
         b = Browser()
         for _ in range(5):
-            self.assertEqual(b.post("/api/auth/login", {"email": buyer.email, "password": "wrong password!"}).status_code, 401)
-        self.assertEqual(b.post("/api/auth/login", {"email": buyer.email, "password": PASSWORD}).status_code, 429)
+            self.assertEqual(b.post("/api/auth/login", {"username": buyer.username, "password": "wrong password!"}).status_code, 401)
+        self.assertEqual(b.post("/api/auth/login", {"username": buyer.username, "password": PASSWORD}).status_code, 429)
 
     def test_login_is_rate_limited_per_ip(self):
         b = Browser()
-        codes = [b.post("/api/auth/login", {"email": unique_email(), "password": "whatever1234"}).status_code
+        codes = [b.post("/api/auth/login", {"username": unique_name(), "password": "whatever1234"}).status_code
                  for _ in range(11)]
         self.assertEqual(codes[:10], [401] * 10)
         self.assertEqual(codes[10], 429)
@@ -220,18 +220,18 @@ class LoginTests(SecurityTestCase):
     def test_same_error_for_unknown_email_and_wrong_password(self):
         buyer = new_buyer()
         b = Browser()
-        unknown = b.post("/api/auth/login", {"email": "nobody@example.com", "password": "whatever1234"})
-        wrong = b.post("/api/auth/login", {"email": buyer.email, "password": "whatever1234"})
+        unknown = b.post("/api/auth/login", {"username": "nobody-here", "password": "whatever1234"})
+        wrong = b.post("/api/auth/login", {"username": buyer.username, "password": "whatever1234"})
         self.assertEqual(unknown.status_code, 401)
         self.assertEqual(unknown.json(), wrong.json())
 
     def test_sql_injection_in_login(self):
-        r = Browser().post("/api/auth/login", {"email": "' OR 1=1 --", "password": "' OR '1'='1"})
+        r = Browser().post("/api/auth/login", {"username": "' OR 1=1 --", "password": "' OR '1'='1"})
         self.assertEqual(r.status_code, 401)
 
     def test_weak_passwords_rejected(self):
         for pw in ("short", "password123", "1234567890123"):
-            r = Browser().post("/api/auth/register", {"email": unique_email(), "password": pw, "role": "buyer"})
+            r = Browser().post("/api/auth/register", register_body("weak", "buyer", password=pw))
             self.assertEqual(r.status_code, 400, pw)
 
     def test_passwords_stored_with_argon2(self):
@@ -241,7 +241,7 @@ class LoginTests(SecurityTestCase):
 
     def test_organizer_without_2fa_cannot_manage_events(self):
         b = Browser()
-        b.post("/api/auth/register", {"email": unique_email("org"), "password": PASSWORD, "role": "organizer"})
+        b.post("/api/auth/register", register_body("org", "organizer"))
         r = b.get("/api/organizer/events")
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.json()["code"], "mfa_setup_required")
@@ -249,7 +249,7 @@ class LoginTests(SecurityTestCase):
     def test_organizer_login_needs_code_and_refuses_reused_code(self):
         org = new_organizer()
         b = Browser()
-        self.assertEqual(b.post("/api/auth/login", {"email": org.email, "password": PASSWORD}).json(), {"mfa_required": True})
+        self.assertEqual(b.post("/api/auth/login", {"username": org.username, "password": PASSWORD}).json(), {"mfa_required": True})
         self.assertEqual(b.get("/api/organizer/events").status_code, 403)  # not signed in yet
 
         last = User.objects.get(pk=org.user.pk).totp_last_counter
@@ -264,7 +264,7 @@ class LoginTests(SecurityTestCase):
         b = Browser()
         b.get("/api/auth/csrf")
         before = b.client.cookies.get(settings.SESSION_COOKIE_NAME)
-        b.post("/api/auth/login", {"email": buyer.email, "password": PASSWORD})
+        b.post("/api/auth/login", {"username": buyer.username, "password": PASSWORD})
         self.assertNotEqual(before and before.value, b.client.cookies[settings.SESSION_COOKIE_NAME].value)
 
 
@@ -277,7 +277,7 @@ class CsrfAndXssTests(SecurityTestCase):
 
     def test_login_is_csrf_protected_too(self):
         buyer = new_buyer()
-        r = Browser().post("/api/auth/login", {"email": buyer.email, "password": PASSWORD}, csrf=False)
+        r = Browser().post("/api/auth/login", {"username": buyer.username, "password": PASSWORD}, csrf=False)
         self.assertEqual(r.status_code, 403)
 
     def test_wrong_csrf_token_is_rejected(self):
@@ -349,9 +349,9 @@ class OversellingTests(TransactionTestCase):
     database connections (threads), not one after the other."""
 
     def test_two_simultaneous_buyers_for_the_last_ticket(self):
-        org = User.objects.create_user(unique_email("org"), PASSWORD, role="organizer")
+        org = User.objects.create_user(unique_name("org"), unique_email("org"), PASSWORD, role="organizer")
         _, tt = new_event(org, capacity=1)
-        buyers = [User.objects.create_user(unique_email("buyer"), PASSWORD) for _ in range(2)]
+        buyers = [User.objects.create_user(unique_name("buyer"), unique_email("buyer"), PASSWORD) for _ in range(2)]
         start = threading.Barrier(2)
         results = []
 
@@ -377,7 +377,7 @@ class OversellingTests(TransactionTestCase):
         self.assertEqual(tt.sold, 1)
 
     def test_database_refuses_to_go_over_capacity(self):
-        org = User.objects.create_user(unique_email("org"), PASSWORD, role="organizer")
+        org = User.objects.create_user(unique_name("org"), unique_email("org"), PASSWORD, role="organizer")
         _, tt = new_event(org, capacity=3)
         with self.assertRaises(IntegrityError):
             TicketType.objects.filter(pk=tt.pk).update(sold=4)

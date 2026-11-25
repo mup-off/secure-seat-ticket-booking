@@ -20,15 +20,15 @@ from audit.services import record
 from core.logging import alert
 
 from . import totp
-from .models import User
-from .serializers import CodeSerializer, LoginSerializer, RegisterSerializer, user_data
+from .models import User, normalize_username
+from .serializers import CodeSerializer, LoginSerializer, RegisterSerializer, clean_username, user_data
 
 logger = logging.getLogger("secureseat")
 
-# Used when the email is unknown, so a failed login takes the same time either way
-# and doesn't reveal which emails have accounts.
+# Used when the username is unknown, so a failed login takes the same time either way
+# and doesn't reveal which usernames have accounts.
 _DUMMY_HASH = make_password("not-a-real-password-just-for-timing")
-GENERIC_LOGIN_ERROR = "Email or password is incorrect."
+GENERIC_LOGIN_ERROR = "Username or password is incorrect."
 PENDING_MFA_SECONDS = 5 * 60
 
 
@@ -70,10 +70,10 @@ class LoginView(APIView):
     def post(self, request):
         s = LoginSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        email = s.validated_data["email"].strip().lower()
-        user = User.objects.filter(email__iexact=email).first()
+        username = normalize_username(s.validated_data["username"])
+        user = User.objects.filter(username=username).first()
 
-        # Always run the password hash, even for unknown emails (timing).
+        # Always run the password hash, even for unknown usernames (timing).
         ok = check_password(s.validated_data["password"], user.password if user else _DUMMY_HASH)
 
         if user and user.is_locked():
@@ -162,7 +162,7 @@ class TwoFactorSetupView(APIView):
                             status=status.HTTP_400_BAD_REQUEST)
         secret = request.session.get("pending_totp_secret") or totp.new_secret()
         request.session["pending_totp_secret"] = secret
-        return Response({"secret": secret, "uri": totp.provisioning_uri(secret, user.email)})
+        return Response({"secret": secret, "uri": totp.provisioning_uri(secret, user.username)})
 
     def post(self, request):
         user = request.user
@@ -191,3 +191,23 @@ class LogoutView(APIView):
             record(request.user, "user.logout", f"user:{request.user.id}")
         logout(request)  # deletes the session on the server
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class UsernameAvailableView(APIView):
+    """Lets the sign-up form say "available" while the person types. Usernames are
+    public anyway, but the check is rate-limited so it can't be used to list accounts quickly."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "username_check"
+
+    def get(self, request):
+        from rest_framework import serializers as drf
+
+        try:
+            name = clean_username(request.query_params.get("username", ""))
+        except drf.ValidationError as exc:
+            return Response({"available": False, "reason": exc.detail[0]})
+        if User.objects.filter(username=name).exists():
+            return Response({"available": False, "reason": "That username is taken."})
+        return Response({"available": True})

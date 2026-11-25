@@ -145,6 +145,11 @@ class TierRuleTests(EventTestCase):
         r = self.org.post(f"/api/organizer/events/{eid}/ticket-types", {**TIER, "price": 0})
         self.assertEqual(r.status_code, 201)
 
+    def test_free_order_gets_tickets_without_payment(self):
+        _, tt = new_event(self.org.user, price=0)
+        order = Order.objects.get(pk=checkout(new_buyer(), tt, quantity=2).json()["id"])
+        self.assertEqual((order.status, order.total, order.tickets.count()), ("paid", 0, 2))
+
     def test_sales_must_end_before_event_ends(self):
         eid = self.draft(**COMPLETE_DETAILS)
         late = (timezone.now() + timedelta(days=41)).isoformat()
@@ -350,5 +355,4 @@ class CoverImageTests(EventTestCase):
         own = self.org.get(f"/api/events/{self.eid}/cover")
         self.assertEqual(own.status_code, 200)
         self.assertEqual(own["Content-Type"], "image/jpeg")
-        own.file_to_stream.close()  # release the file handle (Windows)
         self.assertEqual(Browser().get(f"/api/events/{self.eid}/cover").status_code, 404)

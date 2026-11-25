@@ -30,16 +30,22 @@ function messageFrom(body) {
 
 async function request(method, path, body) {
   const headers = { Accept: 'application/json' };
+  const isForm = body instanceof FormData;
   if (method !== 'GET') {
-    headers['Content-Type'] = 'application/json';
+    if (!isForm) headers['Content-Type'] = 'application/json'; // the browser sets the multipart boundary
     headers['X-CSRFToken'] = csrfToken();
   }
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers,
-    credentials: 'same-origin',
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      headers,
+      credentials: 'same-origin',
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(0, { detail: 'Cannot reach the server. Check that the backend and "npm run dev" are both running.' });
+  }
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data);
@@ -49,4 +55,11 @@ async function request(method, path, body) {
 export const api = {
   get: (path) => request('GET', path),
   post: (path, body = {}) => request('POST', path, body),
+  patch: (path, body = {}) => request('PATCH', path, body),
+  del: (path) => request('DELETE', path),
+  upload: (path, file, field = 'image') => {
+    const form = new FormData();
+    form.append(field, file);
+    return request('POST', path, form);
+  },
 };

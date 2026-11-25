@@ -9,4 +9,5 @@ urlpatterns = [
     path("login/2fa", views.LoginTwoFactorView.as_view()),
     path("2fa/setup", views.TwoFactorSetupView.as_view()),
     path("logout", views.LogoutView.as_view()),
+    path("username-available", views.UsernameAvailableView.as_view()),
 ]

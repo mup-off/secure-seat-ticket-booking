@@ -129,7 +129,7 @@ PASSWORD_HASHERS = [
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
-     "OPTIONS": {"user_attributes": ("email",)}},
+     "OPTIONS": {"user_attributes": ("username", "email")}},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 10}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -188,6 +188,7 @@ REST_FRAMEWORK = {
         "webhook": "120/min",
         "unlock": "10/min",  # hidden-tier access code guesses, per IP
         "upload": "20/hour",  # cover image uploads, per user
+        "username_check": "30/min",  # live "is this username free?" checks, per IP
     },
     "UNAUTHENTICATED_USER": "django.contrib.auth.models.AnonymousUser",
 }
